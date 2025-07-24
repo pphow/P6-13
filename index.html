@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>六年级认读游戏</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; padding: 20px; }
+    button { margin: 10px; padding: 10px 20px; font-size: 16px; }
+    #word { font-size: 28px; margin: 20px; color: blue; }
+    #scoreboard, #leaderboard, #result { margin-top: 20px; }
+    #leaderboard table { margin: auto; border-collapse: collapse; width: 80%; }
+    #leaderboard th, #leaderboard td { border: 1px solid #ccc; padding: 8px; }
+  </style>
+</head>
+<body>
+  <h1>六年级认读游戏</h1>
+  <p>请把显示的字读出来</p>
+
+  <div id="testMic">
+    <button onclick="testMic()">测试麦克风</button>
+    <p id="micStatus"></p>
+  </div>
+
+  <div id="game">
+    <button onclick="startGame()">开始游戏</button>
+    <p id="timer">剩余时间：90 秒</p>
+    <p id="score">得分：0 分</p>
+    <div id="word"></div>
+    <button onclick="nextWord()" id="nextBtn" disabled>下一题</button>
+    <div id="result"></div>
+    <button id="playCorrectBtn" onclick="playCorrect()" style="display:none">正确读音</button>
+  </div>
+
+  <div id="final"></div>
+  <div id="nameInput" style="display:none">
+    <input type="text" id="playerName" placeholder="请输入名字">
+    <button onclick="submitScore()">提交得分</button>
+  </div>
+
+  <div id="leaderboard">
+    <h2>排行榜（P6-3）</h2>
+    <table>
+      <thead><tr><th>名字</th><th>分数</th><th>剩余时间</th><th>完成时间</th></tr></thead>
+      <tbody id="boardBody"></tbody>
+    </table>
+  </div>
+
+  <button onclick="resetGame()">重新开始</button>
+
+  <script>
+    const gameId = "P6-3";
+    const words = [
+      "香炸大虾","小小的米粒","烤鸡翅","灵机一动",
+      "清炒豆苗","争夺财产","一盘水果","不费吹灰之力",
+      "皮蛋瘦肉粥","一杯果汁","折断筷子","伟大的发明"
+    ];
+
+    let shuffled = [];
+    let current = 0;
+    let score = 0;
+    let timer;
+    let timeLeft = 90;
+    let startTime;
+    let recognition;
+
+    function testMic() {
+      if (!('webkitSpeechRecognition' in window)) {
+        alert('您的浏览器不支持语音识别');
+        return;
+      }
+      const testRec = new webkitSpeechRecognition();
+      testRec.lang = 'zh-CN';
+      testRec.start();
+      testRec.onstart = () => document.getElementById('micStatus').innerText = '麦克风测试中...';
+      testRec.onspeechend = () => testRec.stop();
+      testRec.onresult = () => document.getElementById('micStatus').innerText = '麦克风正常';
+      testRec.onerror = () => document.getElementById('micStatus').innerText = '请允许麦克风权限';
+    }
+
+    function startGame() {
+      shuffled = words.sort(() => 0.5 - Math.random()).slice(0, 10);
+      current = 0;
+      score = 0;
+      timeLeft = 90;
+      startTime = new Date();
+      document.getElementById('score').innerText = '得分：0 分';
+      document.getElementById('nextBtn').disabled = false;
+      document.getElementById('result').innerText = '';
+      document.getElementById('playCorrectBtn').style.display = 'none';
+      nextWord();
+      clearInterval(timer);
+      timer = setInterval(() => {
+        timeLeft--;
+        document.getElementById('timer').innerText = `剩余时间：${timeLeft} 秒`;
+        if (timeLeft <= 0) endGame();
+      }, 1000);
+    }
+
+    function nextWord() {
+      if (current >= shuffled.length) {
+        endGame();
+        return;
+      }
+      const word = shuffled[current];
+      document.getElementById('word').innerText = word;
+      document.getElementById('result').innerText = '';
+      document.getElementById('playCorrectBtn').style.display = 'none';
+      recognizeSpeech(word);
+    }
+
+    function recognizeSpeech(correct) {
+      recognition = new webkitSpeechRecognition();
+      recognition.lang = 'zh-CN';
+      recognition.start();
+      recognition.onresult = function(event) {
+        const said = event.results[0][0].transcript.trim();
+        if (said === correct) {
+          score += 10;
+          document.getElementById('score').innerText = `得分：${score} 分`;
+          document.getElementById('result').innerText = '恭喜你！读对了！';
+        } else {
+          document.getElementById('result').innerText = '加油！';
+          document.getElementById('playCorrectBtn').style.display = 'inline-block';
+        }
+        current++;
+      }
+    }
+
+    function playCorrect() {
+      const utter = new SpeechSynthesisUtterance(shuffled[current-1]);
+      utter.lang = 'zh-CN';
+      speechSynthesis.speak(utter);
+    }
+
+    function endGame() {
+      clearInterval(timer);
+      document.getElementById('final').innerText = `得分：${score}，所剩时间：${timeLeft} 秒`;
+      document.getElementById('nameInput').style.display = 'block';
+    }
+
+    function submitScore() {
+      const name = document.getElementById('playerName').value.trim();
+      if (!name) return alert('请输入名字');
+      const finishTime = new Date().toISOString();
+      const entry = { name, score, timeLeft, finishTime };
+      const key = `leaderboard_${gameId}`;
+      const board = JSON.parse(localStorage.getItem(key) || '[]');
+      board.push(entry);
+      board.sort((a, b) => b.score - a.score || b.timeLeft - a.timeLeft || new Date(b.finishTime) - new Date(a.finishTime));
+      localStorage.setItem(key, JSON.stringify(board.slice(0, 10)));
+      updateLeaderboard();
+      document.getElementById('nameInput').style.display = 'none';
+    }
+
+    function updateLeaderboard() {
+      const key = `leaderboard_${gameId}`;
+      const board = JSON.parse(localStorage.getItem(key) || '[]');
+      const tbody = document.getElementById('boardBody');
+      tbody.innerHTML = '';
+      board.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${row.name}</td><td>${row.score}</td><td>${row.timeLeft}</td><td>${new Date(row.finishTime).toLocaleString()}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function resetGame() {
+      clearInterval(timer);
+      document.getElementById('final').innerText = '';
+      document.getElementById('word').innerText = '';
+      document.getElementById('playerName').value = '';
+      document.getElementById('score').innerText = '得分：0 分';
+      document.getElementById('timer').innerText = '剩余时间：90 秒';
+      document.getElementById('result').innerText = '';
+      document.getElementById('playCorrectBtn').style.display = 'none';
+    }
+
+    updateLeaderboard();
+  </script>
+</body>
+</html>
+
